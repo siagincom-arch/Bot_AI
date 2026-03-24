@@ -6,7 +6,7 @@ const supabase = createClient(
 );
 
 /**
- * Формирует красивое название из имени файла
+ * Формирует красивое название из имени файла лекции
  */
 function formatTitle(fileName, folderName) {
   const lectureNum = folderName.match(/lecture_(\d+)/)?.[1] || '?';
@@ -18,36 +18,58 @@ function formatTitle(fileName, folderName) {
 }
 
 /**
- * Список доступных аудиолекций из Supabase Storage
+ * Формирует красивое название из имени файла подкаста
+ */
+function formatPodcastTitle(fileName) {
+  return fileName
+    .replace(/\.(m4a|mp3|wav|ogg)$/, '')
+    .replace(/podcast_/i, '🎙️ Подкаст: ')
+    .replace(/_/g, ' ');
+}
+
+/**
+ * Список доступных аудиолекций и подкастов из Supabase Storage
  */
 export async function listAvailableAudio() {
   try {
+    const result = [];
+
+    // 1. Лекции из lectures/
     const { data: folders, error: fErr } = await supabase.storage
       .from('audio-lectures')
       .list('lectures', { limit: 20 });
 
-    if (fErr || !folders?.length) {
-      console.error('Ошибка получения папок:', fErr?.message);
-      return [];
+    if (!fErr && folders?.length) {
+      for (const item of folders) {
+        if (item.metadata) continue;
+
+        const { data: files, error: filesErr } = await supabase.storage
+          .from('audio-lectures')
+          .list(`lectures/${item.name}`, { limit: 20 });
+
+        if (filesErr || !files) continue;
+
+        for (const file of files) {
+          if (!file.name.endsWith('.m4a')) continue;
+          result.push({
+            title: formatTitle(file.name, item.name),
+            path: `lectures/${item.name}/${file.name}`,
+          });
+        }
+      }
     }
 
-    const result = [];
+    // 2. Подкасты из podcasts/
+    const { data: podcasts, error: pErr } = await supabase.storage
+      .from('audio-lectures')
+      .list('podcasts', { limit: 20 });
 
-    for (const item of folders) {
-      // Папки не имеют metadata, файлы — имеют
-      if (item.metadata) continue;
-
-      const { data: files, error: filesErr } = await supabase.storage
-        .from('audio-lectures')
-        .list(`lectures/${item.name}`, { limit: 20 });
-
-      if (filesErr || !files) continue;
-
-      for (const file of files) {
-        if (!file.name.endsWith('.m4a')) continue;
+    if (!pErr && podcasts?.length) {
+      for (const file of podcasts) {
+        if (!file.name.match(/\.(m4a|mp3)$/)) continue;
         result.push({
-          title: formatTitle(file.name, item.name),
-          path: `lectures/${item.name}/${file.name}`,
+          title: formatPodcastTitle(file.name),
+          path: `podcasts/${file.name}`,
         });
       }
     }
@@ -72,7 +94,10 @@ export async function getLectureAudio(ctx, filePath) {
       .join('/');
 
     const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/audio-lectures/${encodedPath}`;
-    console.log(`🎧 Скачивание аудио: ${publicUrl}`);
+
+    // Предупреждаем пользователя о загрузке
+    await ctx.reply('⏳ Подожди минутку, загружаю аудио... Файл может быть большим.');
+    await ctx.sendChatAction('upload_voice');
 
     // Скачиваем файл в буфер
     const response = await fetch(publicUrl);

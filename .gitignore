@@ -1,4 +1,14 @@
 node_modules/
 .env
+.env.*
+.env.keys
 *.log
 dist/
+
+# Аудиофайлы (хранятся в Supabase Storage)
+knowledge_base/*.m4a
+knowledge_base/*.mp3
+
+# IDE
+.vscode/
+.idea/

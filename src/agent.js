@@ -86,6 +86,8 @@ function parseFunctionCall(text) {
 
 /**
  * Обработка сообщения через Perplexity с Function Calling через промпт
+ * Для квизов возвращает объект { isQuiz, question, answer }
+ * Для обычных ответов возвращает строку
  */
 export async function handleMessage(userText) {
   try {
@@ -99,7 +101,6 @@ export async function handleMessage(userText) {
     const funcCall = parseFunctionCall(firstResponse);
 
     if (!funcCall) {
-      // Обычный текстовый ответ
       return firstResponse;
     }
 
@@ -117,6 +118,16 @@ export async function handleMessage(userText) {
         content: `Результат функции ${funcCall.function}:\n${JSON.stringify(result, null, 2)}\n\nОтветь пользователю на основе этих данных. Будь лаконичным и полезным.`,
       },
     ]);
+
+    // 5. Для квизов — разделяем вопрос и ответ по маркеру
+    if (result?.isQuiz && finalResponse.includes('---ANSWER---')) {
+      const [question, answer] = finalResponse.split('---ANSWER---');
+      return {
+        isQuiz: true,
+        question: question.trim(),
+        answer: answer.trim(),
+      };
+    }
 
     return finalResponse;
   } catch (error) {
